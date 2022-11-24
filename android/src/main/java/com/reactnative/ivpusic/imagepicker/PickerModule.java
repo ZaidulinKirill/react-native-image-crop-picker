@@ -7,6 +7,7 @@ import android.content.Context;
 import android.content.ContentResolver;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.database.Cursor;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Color;
@@ -485,11 +486,11 @@ class PickerModule extends ReactContextBaseJavaModule implements ActivityEventLi
 
         String mime = getMimeType(path);
         if (mime != null && mime.startsWith("video/")) {
-            getVideo(activity, path, mime);
+            getVideo(activity, path, mime, uri);
             return null;
         }
 
-        return getImage(activity, path);
+        return getImage(activity, path, uri);
     }
 
     private void getAsyncSelection(final Activity activity, Uri uri, boolean isCamera) throws Exception {
@@ -501,11 +502,12 @@ class PickerModule extends ReactContextBaseJavaModule implements ActivityEventLi
 
         String mime = getMimeType(path);
         if (mime != null && mime.startsWith("video/")) {
-            getVideo(activity, path, mime);
+            getVideo(activity, path, mime, uri);
+            getVideo(activity, path, mime, uri);
             return;
         }
 
-        resultCollector.notifySuccess(getImage(activity, path));
+        resultCollector.notifySuccess(getImage(activity, path, uri));
     }
 
     private Bitmap validateVideo(String path) throws Exception {
@@ -532,7 +534,7 @@ class PickerModule extends ReactContextBaseJavaModule implements ActivityEventLi
         }
     }
 
-    private void getVideo(final Activity activity, final String path, final String mime) throws Exception {
+    private void getVideo(final Activity activity, final String path, final String mime, Uri uri) throws Exception {
         validateVideo(path);
         final String compressedVideoPath = getTmpDir(activity) + "/" + UUID.randomUUID().toString() + ".mp4";
 
@@ -557,6 +559,18 @@ class PickerModule extends ReactContextBaseJavaModule implements ActivityEventLi
                             video.putInt("duration", (int) duration);
                             video.putString("path", "file://" + videoPath);
                             video.putString("modificationDate", String.valueOf(modificationDate));
+                            video.putString("contentUri", uri.toString());
+
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                // MediaStore.Images.Media.DATA
+
+                                Cursor cursor = activity.getContentResolver().query(uri, new String[]{
+                                        MediaStore.Images.Media.DATA,
+                                }, null, null);
+                                cursor.moveToFirst();
+                                int column_index = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATA);
+                                video.putString("contentPath", cursor.getString(column_index));
+                            }
 
                             resultCollector.notifySuccess(video);
                         } catch (Exception e) {
@@ -671,7 +685,7 @@ class PickerModule extends ReactContextBaseJavaModule implements ActivityEventLi
         return options;
     }
 
-    private WritableMap getImage(final Activity activity, String path) throws Exception {
+    private WritableMap getImage(final Activity activity, String path, Uri uri) throws Exception {
         WritableMap image = new WritableNativeMap();
 
         if (path.startsWith("http://") || path.startsWith("https://")) {
@@ -692,6 +706,18 @@ class PickerModule extends ReactContextBaseJavaModule implements ActivityEventLi
         image.putString("mime", options.outMimeType);
         image.putInt("size", (int) new File(compressedImagePath).length());
         image.putString("modificationDate", String.valueOf(modificationDate));
+        image.putString("contentUri", uri.toString());
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            // MediaStore.Images.Media.DATA
+
+            Cursor cursor = activity.getContentResolver().query(uri, new String[]{
+                    MediaStore.Images.Media.DATA,
+            }, null, null);
+            cursor.moveToFirst();
+            int column_index = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATA);
+            image.putString("contentPath", cursor.getString(column_index));
+        }
 
         if (includeBase64) {
             image.putString("data", getBase64StringFromFile(compressedImagePath));
